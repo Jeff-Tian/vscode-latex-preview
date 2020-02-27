@@ -27,7 +27,7 @@ export function activate(ctx: ExtensionContext) {
 
   ctx.subscriptions.push(workspace.onDidSaveTextDocument(doc => {
     if (languages.match(constants.LATEX_SELECTOR, doc) > 0) {
-      provider. update(doc.uri);
+      provider.update(doc.uri);
     }
   }));
 }
@@ -82,11 +82,14 @@ async function showPreview(uri?: Uri, column?: ViewColumn) {
 
   console.log(previewUri, column, title);
 
-  const panel = window.createWebviewPanel('latex-preview', title, ViewColumn.Beside, {});
-  panel.webview.html = await provider.provideTextDocumentContent(previewUri, {
-    isCancellationRequested: false,
-    onCancellationRequested: null
+  const panel = window.createWebviewPanel('latex-preview', title, ViewColumn.Beside, {
+    enableScripts: true,
+    retainContextWhenHidden: true,
+    enableCommandUris: true,
+    // portMapping: [{ webviewPort: provider.http.address().port, extensionHostPort: provider.http.address().port }]
   });
+
+  panel.webview.html = await provider.provideTextDocumentContent(previewUri, panel.webview);
 
   // return commands.executeCommand("vscode.previewHtml", previewUri, column, title);
 }

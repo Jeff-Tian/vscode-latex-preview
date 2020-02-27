@@ -3,7 +3,7 @@ import * as synctex from "./synctex";
 import * as cp from "child_process";
 import { mkdir } from "fs";
 import * as http from "http";
-import { dirname, join, relative } from "path";
+import { dirname, join, relative, basename, parse } from "path";
 import * as tmp from "tmp";
 import * as vscode from "vscode";
 import * as ws from "ws";
@@ -12,8 +12,8 @@ import * as ws from "ws";
  * Provides preview content and creates a websocket server which communicates with the preview.
  */
 export default class LatexDocumentProvider implements vscode.TextDocumentContentProvider {
-  private http: http.Server;
-  private server: ws.Server;
+  public http: http.Server;
+  public server: ws.Server;
   private listening: Promise<void>;
 
   private directories = new Map<string, string>();
@@ -58,7 +58,7 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
   /**
    * Creates a working dir and returns client HTML.
    */
-  public async provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> {
+  public async provideTextDocumentContent(uri: vscode.Uri, webview: any): Promise<string> {
     await this.listening;
 
     // Create a working dir and start listening.
@@ -75,6 +75,10 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
     <!DOCTYPE html>
     <html>
     <head>
+      <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src ${webview.cspSource} https:; script-src ${webview.cspSource}; style-src ${webview.cspSource};"
+      />
       <link rel="stylesheet" href="${this.getResourcePath("media/style.css")}">
 
       <script src="${this.getResourcePath("node_modules/pdfjs-dist/build/pdf.js")}"></script>
@@ -92,6 +96,10 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
       <div id="compile-error">
         ⚠ error compiling preview
       </div>
+      <iframe id="preview-panel" class="preview-panel" src="${uri.fsPath.replace('.tex', '.pdf')}" style="position:absolute; border: none; left: 0; top: 0; width: 100%; height: 100%;">
+        Hello
+            </iframe>
+        Done: ${this.getResourcePath("out/src/client.js")} ${uri.fsPath}
     </body>
     </html>`;
   }
@@ -99,18 +107,27 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
   public update(uri: vscode.Uri) {
     let paths: string[];
 
-    if (vscode.workspace.getConfiguration().get<boolean>(constants.CONFIG_UPDATE_ALL_ON_SAVE)) {
+    if (vscode.workspace.getConfiguration().get<boolean>("true")) {
       paths = Array.from(this.clients.keys());
     } else {
       paths = [uri.fsPath];
     }
 
-    paths.filter(path => this.isPreviewing(path)).forEach(path => {
+    paths.forEach(path => {
       this
         .build(path, this.directories.get(path))
-        .then(pdf => ({ type: "update", path: pdf }))
-        .catch(() => ({ type: "error" }))
-        .then(data => this.clients.get(path).send(JSON.stringify(data)));
+        .then(pdf => {
+          console.log('pdf = ', pdf);
+
+          return ({ type: "update", path: pdf });
+        })
+        .catch((err) => {
+          return ({ type: "error" });
+        })
+        .then(data => {
+          console.log('data = ', data);
+          return this.clients.get(path).send(JSON.stringify(data))
+        });
     });
   }
 
@@ -150,34 +167,42 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
    * Builds a PDF and returns the path to it.
    */
   private build(path: string, dir: string): Promise<string> {
-    let command = vscode.workspace.getConfiguration().get(constants.CONFIG_COMMAND, "pdflatex");
-    let args = ["-jobname=preview", "-synctex=1", "-interaction=nonstopmode", "-file-line-error"];
-
-    if (command === "latexmk") {
-      args.push("-pdf");
-    }
-
-    args.push(`-output-directory=${arg(dir)}`);
-    args.push(arg(path));
-
-    command = [command].concat(...args).join(" ");
-
+    const buildWith = "latexmk";
+    const buildArgs = ["-xelatex", "-shell-escape", "-interaction=nonstopmode", "-file-line-error", parse(path).name]
     this.output.clear();
+    const command = [buildWith].concat(buildArgs).join(" ");
     this.output.appendLine(command);
+    console.log(command);
 
     return new Promise((resolve, reject) => {
       let env = Object.assign({}, process.env, { "OUTPUTDIR": arg(dir) });
-      cp.exec(command, { cwd: dirname(path), env: env }, (err, stdout, stderr) => {
-        this.diagnostics.clear();
-        this.output.append(stdout);
-        this.output.append(stderr);
 
-        if (err) {
+      const latexmk = cp.spawn(buildWith, buildArgs, { cwd: dirname(path), env: env });
+
+      this.diagnostics.clear();
+      const error = [];
+
+      latexmk.stdout.on('data', data => {
+        console.log('latexmk: ', data.toString());
+        this.output.append(data.toString());
+      })
+
+      latexmk.stderr.on('data', data => {
+        console.error('latexmk: ', data.toString());
+        this.output.append(data.toString());
+
+        error.push(data.toString());
+      });
+
+      latexmk.on('close', (code) => {
+        if (code !== 0) {
+          console.error('latexmk exited with ', code);
+
           let regexp = new RegExp(constants.ERROR_REGEX, "gm");
           let entries = [];
           let matches: RegExpExecArray;
 
-          while ((matches = regexp.exec(stdout)) != null) {
+          while ((matches = regexp.exec(this.output.toString())) != null) {
             const line = parseInt(matches[2], 10) - 1;
             const range = new vscode.Range(line, 0, line, Number.MAX_VALUE);
 
@@ -189,11 +214,13 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
 
           this.diagnostics.set(entries);
 
-          reject(err);
+          reject({ code: code, messages: error.join('') });
         } else {
+          console.error('latexmk finished with ', code);
+
           resolve(`${dir}/preview.pdf`);
         }
-      });
+      })
     });
   }
 
@@ -205,6 +232,7 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
 
   private onClientMessage(client: ws, message: any) {
     const data = JSON.parse(message);
+    console.log('message from client: ', data);
 
     if (data.type === "open") {
       const path = data.path;
@@ -270,9 +298,9 @@ export default class LatexDocumentProvider implements vscode.TextDocumentContent
 
     const mkdirs = new Set(
       texs.map(file => dirname(file.fsPath))
-          .map(dir => relative(dirname(target), dir))
-          .filter(dir => !!dir)
-          .sort((a, b) => a.length - b.length)
+        .map(dir => relative(dirname(target), dir))
+        .filter(dir => !!dir)
+        .sort((a, b) => a.length - b.length)
     );
 
     await Promise.all([...mkdirs].map(subdir => new Promise((c, e) => {

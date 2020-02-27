@@ -1,5 +1,6 @@
 /// <reference path="../node_modules/@types/pdf/index.d.ts" />
 
+console.log('client ts starting...');
 let path: string;
 let socket: WebSocket;
 
@@ -11,6 +12,7 @@ let zoom = 1.0;
 let zoomInput: HTMLInputElement;
 
 document.addEventListener("DOMContentLoaded", () => {
+  console.log('DOMContentLoaded.');
   const error = document.getElementById("compile-error");
 
   path = document.body.dataset["path"];
@@ -50,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // Zoom handlers.
-  zoomInput = <HTMLInputElement> document.getElementById("zoom-input");
+  zoomInput = <HTMLInputElement>document.getElementById("zoom-input");
 
   document.getElementById("zoom-in").onclick = getOnZoomClick(0.25);
   document.getElementById("zoom-out").onclick = getOnZoomClick(-0.25);
@@ -129,3 +131,6 @@ function getOnZoomClick(change: number) {
     renderPages();
   };
 }
+
+
+console.log('client.ts loaded.');
