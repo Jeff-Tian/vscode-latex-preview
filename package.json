@@ -11,13 +11,15 @@
     "url": "https://github.com/ajshort/vscode-latex-preview.git"
   },
   "engines": {
-    "vscode": "^1.6.0"
+    "vscode": "^1.38.0"
   },
   "categories": [
     "Languages"
   ],
   "keywords": [
-    "latex", "tex", "preview"
+    "latex",
+    "tex",
+    "preview"
   ],
   "activationEvents": [
     "onCommand:latex-preview.createBuildTask",
@@ -126,8 +128,8 @@
     "@types/pdf": "0.0.31",
     "@types/tmp": "0.0.31",
     "@types/ws": "0.0.36",
+    "@types/vscode": "^1.38.0",
     "mocha": "^2.3.3",
-    "typescript": "^2.0.3",
-    "vscode": "^1.0.0"
+    "typescript": "^2.0.3"
   }
 }

@@ -59,7 +59,7 @@ async function createBuildTask() {
   });
 }
 
-function showPreview(uri?: Uri, column?: ViewColumn) {
+async function showPreview(uri?: Uri, column?: ViewColumn) {
   // Use the configured filename, or the current editor.
   const filename = workspace.getConfiguration().get<string>(constants.CONFIG_FILENAME);
 
@@ -80,10 +80,18 @@ function showPreview(uri?: Uri, column?: ViewColumn) {
   const previewUri = uri.with({ scheme: constants.PREVIEW_SCHEME });
   const title = `Preview "${basename(uri.fsPath)}"`;
 
-  return commands.executeCommand("vscode.previewHtml", previewUri, column, title);
+  console.log(previewUri, column, title);
+
+  const panel = window.createWebviewPanel('latex-preview', title, column, {});
+  panel.webview.html = await provider.provideTextDocumentContent(previewUri, {
+    isCancellationRequested: false,
+    onCancellationRequested: null
+  });
+
+  // return commands.executeCommand("vscode.previewHtml", previewUri, column, title);
 }
 
-function showPreviewToSide(uri?: Uri) {
+async function showPreviewToSide(uri?: Uri) {
   if (!window.activeTextEditor) {
     return showPreview(uri);
   }
