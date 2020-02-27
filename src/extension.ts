@@ -27,7 +27,7 @@ export function activate(ctx: ExtensionContext) {
 
   ctx.subscriptions.push(workspace.onDidSaveTextDocument(doc => {
     if (languages.match(constants.LATEX_SELECTOR, doc) > 0) {
-      provider.update(doc.uri);
+      provider. update(doc.uri);
     }
   }));
 }
@@ -82,7 +82,7 @@ async function showPreview(uri?: Uri, column?: ViewColumn) {
 
   console.log(previewUri, column, title);
 
-  const panel = window.createWebviewPanel('latex-preview', title, column, {});
+  const panel = window.createWebviewPanel('latex-preview', title, ViewColumn.Beside, {});
   panel.webview.html = await provider.provideTextDocumentContent(previewUri, {
     isCancellationRequested: false,
     onCancellationRequested: null
